@@ -30,3 +30,9 @@ To start the development server, follow these steps:
   ```
 
 # Shedular
+
+## Product Build Guide
+
+Planning and architecture documents for the production version are in:
+
+- `docs/implementation-guide/README.md`
