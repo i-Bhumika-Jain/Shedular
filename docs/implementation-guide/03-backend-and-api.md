@@ -1,125 +1,287 @@
 # Backend and API Design
 
-## Recommended Backend Approach
-
-For MVP, use `Next.js` with route handlers.
-
-That gives:
-
-- one repo
-- easier deployment
-- faster shipping
-- server-side AI calls
-- protected APIs
-
-If the product grows heavily later, we can split backend into a separate service.
-
-## Core Backend Responsibilities
-
-- authentication and authorization
-- CRUD for planner data
-- recurring task generation
-- AI prompt orchestration
-- reminders and notifications
-- audit logs and analytics
-
-## API Design Principles
-
-- version your APIs from day one
-- keep endpoints resource-based
-- validate every request
-- never call AI directly from the browser with secret keys
-- put business logic in services, not inside route files
-
-## Example API Structure
+The current backend is an Express + PostgreSQL API living in:
 
 ```text
-/api/v1/auth/*
-/api/v1/profile
-/api/v1/schedules
-/api/v1/tasks
-/api/v1/goals
-/api/v1/notes
-/api/v1/checklists
-/api/v1/wellness/mood
-/api/v1/wellness/energy
-/api/v1/wellness/period
-/api/v1/ai/assistant
-/api/v1/ai/schedule-suggestions
+server/
 ```
 
-## Example Endpoints
+It follows a simple professional structure:
+
+```text
+server/
+  app.js
+  index.js
+  config/
+  db/
+    migrations/
+  middleware/
+  repositories/
+  routes/
+  services/
+  utils/
+  validators/
+```
+
+## Architecture Rules
+
+- routes stay thin
+- validation is handled with Zod schemas
+- services hold business rules and permissions
+- repositories hold SQL/database access
+- middleware handles auth/errors
+- all API responses use a consistent success/error shape
+
+## Environment
+
+Create `.env` from `.env.example`:
+
+```text
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/schedular
+JWT_SECRET=replace-this-with-a-long-random-secret
+```
+
+Run migrations:
+
+```bash
+npm run db:migrate
+```
+
+Start the API:
+
+```bash
+npm run server:dev
+```
+
+The API runs at:
+
+```text
+http://localhost:4000/api/v1
+```
+
+## Implemented Endpoints
+
+### Health
+
+- `GET /api/v1/health`
 
 ### Auth
 
 - `POST /api/v1/auth/signup`
 - `POST /api/v1/auth/login`
-- `POST /api/v1/auth/logout`
-- `POST /api/v1/auth/forgot-password`
+- `GET /api/v1/auth/me`
 
-### Planner
+Signup creates:
 
-- `GET /api/v1/tasks?date=2026-03-27`
-- `POST /api/v1/tasks`
-- `PATCH /api/v1/tasks/:taskId`
-- `DELETE /api/v1/tasks/:taskId`
+- a user
+- a user profile
+- one default `schedule_people` record for that user
+- one default weekly schedule
 
-### Goals
+Signup requires:
 
-- `GET /api/v1/goals`
-- `POST /api/v1/goals`
-- `PATCH /api/v1/goals/:goalId`
+- `name`
+- `username`
+- `email`
+- `password`
 
-### Wellness
+Optional:
 
-- `POST /api/v1/wellness/mood`
-- `POST /api/v1/wellness/energy`
-- `GET /api/v1/wellness/period`
-- `POST /api/v1/wellness/period/log`
+- `phoneNumber`
 
-### AI
+Login uses:
 
-- `POST /api/v1/ai/assistant`
-- `POST /api/v1/ai/schedule-suggestions`
+- `identifier`: username, email, or phone number
+- `password`
 
-## Service Layer Suggestion
+### People
 
-```text
-src/
-  server/
-    services/
-      auth.service.ts
-      planner.service.ts
-      goals.service.ts
-      notes.service.ts
-      wellness.service.ts
-      ai.service.ts
-    repositories/
-      task.repository.ts
-      goal.repository.ts
-      note.repository.ts
+These represent people whose schedules can be managed.
+
+- `GET /api/v1/people`
+- `POST /api/v1/people`
+- `PATCH /api/v1/people/:personId`
+
+### Schedules
+
+- `GET /api/v1/people/:personId/schedules`
+- `POST /api/v1/people/:personId/schedules`
+
+### Schedule Items
+
+- `GET /api/v1/schedules/:scheduleId/items`
+- `POST /api/v1/schedules/:scheduleId/items`
+- `PATCH /api/v1/schedule-items/:itemId`
+- `DELETE /api/v1/schedule-items/:itemId`
+- `POST /api/v1/schedule-items/:itemId/completions`
+
+Useful filters:
+
+- `?weekday=1&completionDate=2026-05-26` for a weekly template day with completion state
+- `?date=2026-05-26` for date-specific items
+
+## Example Requests
+
+### Signup
+
+```http
+POST /api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "name": "Bhumika Jain",
+  "username": "bhumika_jain",
+  "email": "bhumika@example.com",
+  "phoneNumber": "+919876543210",
+  "password": "password123",
+  "timezone": "Asia/Kolkata"
+}
 ```
 
-## API Response Shape
+### Login
 
-Use a consistent contract:
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "bhumika_jain",
+  "password": "password123"
+}
+```
+
+Use the returned token:
+
+```http
+Authorization: Bearer <token>
+```
+
+### Add Another Person
+
+```http
+POST /api/v1/people
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "displayName": "Mom",
+  "relationship": "family",
+  "timezone": "Asia/Kolkata"
+}
+```
+
+### Add a Weekly Schedule Item
+
+`weekday` uses `0 = Sunday`, `1 = Monday`, ... `6 = Saturday`.
+
+```http
+POST /api/v1/schedules/<scheduleId>/items
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Morning walk",
+  "category": "health",
+  "weekday": 1,
+  "startTime": "06:30",
+  "endTime": "07:00",
+  "priority": 3
+}
+```
+
+### Add a Date-Specific Schedule Item
+
+```http
+POST /api/v1/schedules/<scheduleId>/items
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Doctor appointment",
+  "category": "selfcare",
+  "scheduledDate": "2026-05-26",
+  "startTime": "10:00",
+  "endTime": "11:00"
+}
+```
+
+### Mark an Item Done
+
+```http
+POST /api/v1/schedule-items/<itemId>/completions
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "completionDate": "2026-05-26",
+  "status": "done"
+}
+```
+
+## Response Shape
+
+Success:
 
 ```json
 {
   "success": true,
   "data": {},
-  "message": "Task created successfully"
+  "message": "OK"
 }
 ```
 
-For errors:
+Error:
 
 ```json
 {
   "success": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Invalid request payload"
+    "message": "Invalid request payload.",
+    "details": []
   }
 }
+```
+
+## Next Backend APIs
+
+The schema is ready for these next:
+
+- goals
+- notes
+- wellness logs
+- period tracker
+- saved links
+- AI assistant message history
+- sharing invites for `person_members`
+
+## Current Frontend Data Flow
+
+The app started as a prototype, so old data still exists in:
+
+```text
+src/data.js
+browser localStorage
+```
+
+The new flow is:
+
+1. User signs up or logs in through the backend.
+2. Backend returns a JWT token.
+3. Frontend loads the user's first planner person.
+4. Frontend loads that person's weekly schedule from PostgreSQL.
+5. If the database schedule is empty, the frontend seeds the old prototype schedule once.
+6. Completing a timetable item is saved through the backend.
+
+Goals, notes, saved links, wellness, and AI chat history still need their API wiring next.
+
+## PostgreSQL Permission Fix
+
+The app database user must be allowed to create tables in the `public` schema. Run this as a Postgres admin user:
+
+```sql
+ALTER DATABASE timetable OWNER TO "Bhumika";
+GRANT ALL PRIVILEGES ON DATABASE timetable TO "Bhumika";
+GRANT USAGE, CREATE ON SCHEMA public TO "Bhumika";
+ALTER SCHEMA public OWNER TO "Bhumika";
 ```

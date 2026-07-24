@@ -1,136 +1,201 @@
 # Database Design
 
-## Why PostgreSQL
+This project now has a first PostgreSQL schema in:
 
-`PostgreSQL` is a strong choice for this app because:
+```text
+server/db/migrations/001_initial_schema.sql
+```
 
-- relational data fits naturally
-- strong indexing support
-- JSON support for flexible AI metadata
-- great with Prisma
-- scalable enough for MVP and beyond
+The design is multi-user and multi-person. That means:
 
-## Core Tables
+- many users can sign up and log in
+- one user can manage schedules for more than one person
+- schedules can later be shared with another user as `owner`, `editor`, or `viewer`
+- weekly templates and date-specific plans are both supported
+
+## Core Relationship Model
+
+```text
+users
+  -> user_profiles
+  -> person_members
+      -> schedule_people
+          -> schedules
+              -> schedule_items
+                  -> task_completions
+          -> goals
+              -> goal_items
+          -> note_categories
+              -> notes
+          -> wellness_logs
+          -> period_settings
+          -> period_cycles
+          -> saved_links
+          -> ai_sessions
+              -> ai_messages
+```
+
+## Tables
 
 ### `users`
 
-- `id`
+Stores real login accounts.
+
+Important columns:
+
+- `id UUID PRIMARY KEY`
 - `name`
 - `email`
 - `password_hash`
 - `timezone`
+- `status`
 - `created_at`
 - `updated_at`
 
-### `profiles`
+Rules:
 
-- `id`
+- emails are stored lowercase
+- unique index is on `lower(email)`
+- never store plain passwords
+
+### `user_profiles`
+
+Stores UI/user preferences that do not belong in auth.
+
+Important columns:
+
 - `user_id`
 - `theme`
 - `default_view`
 - `onboarding_complete`
 
-### `tasks`
+### `schedule_people`
+
+Represents the person whose schedule is being managed.
+
+This is the key table for "make schedules for several people."
+
+Examples:
+
+- your own planner
+- family member
+- student
+- client
+- team member
+
+Important columns:
 
 - `id`
+- `owner_user_id`
+- `display_name`
+- `relationship`
+- `timezone`
+- `deleted_at`
+
+### `person_members`
+
+Controls who can access a person's planner.
+
+Important columns:
+
+- `person_id`
 - `user_id`
-- `date`
+- `role`: `owner`, `editor`, `viewer`
+
+This avoids hardcoding ownership into every query and lets us add sharing later.
+
+### `schedules`
+
+Stores a schedule container.
+
+Important columns:
+
+- `person_id`
+- `name`
+- `schedule_type`: `weekly_template` or `dated_plan`
+- `start_date`
+- `end_date`
+- `is_active`
+
+### `schedule_items`
+
+Stores individual tasks/events inside a schedule.
+
+Important columns:
+
+- `schedule_id`
 - `title`
 - `description`
 - `category`
-- `status`
 - `priority`
+- `weekday`
+- `scheduled_date`
 - `start_time`
 - `end_time`
-- `is_recurring`
-- `recurrence_rule`
-- `source`
-- `created_at`
-- `updated_at`
+- `recurrence_rule JSONB`
+- `source`: `manual`, `assistant`, `system`, `import`
 
-### `goals`
+Rules:
 
-- `id`
-- `user_id`
-- `title`
-- `icon`
-- `color`
-- `created_at`
+- weekly template items use `weekday`
+- date-specific items use `scheduled_date`
+- the schema enforces exactly one of those fields
 
-### `goal_items`
+### `task_completions`
 
-- `id`
-- `goal_id`
-- `title`
-- `is_done`
-- `position`
+Stores daily completion state separately from template tasks.
 
-### `notes`
+This is important because a Monday template task can be completed on one Monday but still exist for future Mondays.
 
-- `id`
-- `user_id`
-- `category`
-- `title`
-- `content`
-- `created_at`
-- `updated_at`
+Important columns:
 
-### `mood_logs`
+- `schedule_item_id`
+- `completion_date`
+- `status`: `done`, `skipped`, `moved`
+- `completed_at`
 
-- `id`
-- `user_id`
-- `date`
-- `mood`
-- `energy`
-- `note`
+### `goals` and `goal_items`
 
-### `period_logs`
+Stores goal categories and checklist items.
 
-- `id`
-- `user_id`
-- `start_date`
-- `cycle_length`
-- `period_duration`
+### `note_categories` and `notes`
 
-### `ai_conversations`
+Stores notes without forcing all notes into one giant JSON object.
 
-- `id`
-- `user_id`
-- `session_id`
-- `role`
-- `message`
-- `metadata_json`
-- `created_at`
+### `wellness_logs`
+
+Stores daily mood, energy, and notes.
+
+### `period_settings` and `period_cycles`
+
+Stores period tracking configuration and history.
 
 ### `saved_links`
 
-- `id`
-- `user_id`
-- `type`
-- `title`
-- `url`
+Stores workout, study, skincare, cooking, or general resource links.
 
-## Important Rules
+### `ai_sessions` and `ai_messages`
 
-- every user-owned table must include `user_id`
-- add indexes on `user_id`, `date`, and commonly filtered columns
-- use soft delete only where business value exists
-- store timestamps on all important tables
+Stores assistant conversations safely on the backend.
 
-## Example Relationships
+### `audit_logs`
 
-- one user has many tasks
-- one user has many goals
-- one goal has many goal items
-- one user has many notes
-- one user has many mood logs
-- one user has many period logs
-- one user has many AI messages
+Stores important system actions for debugging and future admin/history views.
 
-## Suggested Future Additions
+## Indexing Strategy
 
-- reminders
-- notifications
-- device sessions
-- activity logs
-- shared planners
+Indexes are included for:
+
+- user email lookup
+- person membership lookup
+- person schedules
+- schedule items by weekday/date/time
+- completion date
+- notes/goals by parent
+- audit logs by actor and entity
+
+## Delete Strategy
+
+- `users` cascade to owned private data
+- planner people, schedules, tasks, goals, and notes support soft delete where user-facing recovery/history may matter
+- child-only records like `goal_items` can cascade because they do not make sense without their parent

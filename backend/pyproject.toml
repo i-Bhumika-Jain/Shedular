@@ -1,0 +1,22 @@
+[project]
+name = "schedular-backend"
+version = "0.1.0"
+description = "FastAPI backend for Schedular"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn[standard]>=0.35.0",
+  "psycopg[binary,pool]>=3.2.0",
+  "pydantic-settings>=2.11.0",
+  "email-validator>=2.3.0",
+  "pyjwt>=2.10.0",
+  "passlib[bcrypt]>=1.7.4",
+  "python-multipart>=0.0.20",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false

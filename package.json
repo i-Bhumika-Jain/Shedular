@@ -1,21 +1,13 @@
 {
-    "name": "daily-planner",
+    "name": "schedular",
     "private": true,
     "version": "1.0.0",
-    "type": "module",
     "scripts": {
-        "dev": "vite",
-        "build": "vite build",
-        "preview": "vite preview"
-    },
-    "dependencies": {
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1"
-    },
-    "devDependencies": {
-        "@types/react": "^18.3.12",
-        "@types/react-dom": "^18.3.1",
-        "@vitejs/plugin-react": "^4.3.4",
-        "vite": "^6.0.5"
+        "backend:install": "cd backend && uv sync",
+        "backend:migrate": "cd backend && uv run python -m app.db.migrate",
+        "backend:dev": "cd backend && uv run python -m uvicorn app.main:app --reload --port 8000",
+        "frontend:install": "npm install --prefix frontend-next",
+        "frontend:dev": "npm run dev --prefix frontend-next",
+        "frontend:build": "npm run build --prefix frontend-next"
     }
 }
